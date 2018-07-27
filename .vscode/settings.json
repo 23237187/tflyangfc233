@@ -1,0 +1,10 @@
+{
+    "python.pythonPath": "C:\\Anaconda3\\envs\\tensorflow\\python.exe",
+    "python.autoComplete.preloadModules": [
+        "numpy",
+        "pandas",
+        "tensorflow",
+        "sklearn"
+    ],
+    "python.jediEnabled": false
+}
