@@ -32,7 +32,7 @@ import tensorflow as tf
 reset_graph()
 
 x = tf.Variable(3, name="x")
-y = tf.Variable(3, name="y")
+y = tf.Variable(4, name="y")
 f = x*x*y + y + 2
 
 f
@@ -471,6 +471,8 @@ with tf.Session() as sess:
                 step = epoch * n_bathches + batch_index
                 file_writer.add_summary(summary_str, step)
             sess.run(training_op, feed_dict={X:X_batch, y: y_batch})
+    
+    best_theta = theta.eval()
 
 file_writer.close()
 

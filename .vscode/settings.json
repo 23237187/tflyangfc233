@@ -6,5 +6,6 @@
         "tensorflow",
         "sklearn"
     ],
-    "python.jediEnabled": false
+    "python.jediEnabled": false,
+    "python.linting.enabled": false
 }
