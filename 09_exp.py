@@ -478,3 +478,297 @@ file_writer.close()
 
 best_theta
 
+#==============================Name Scopes=================================
+
+reset_graph()
+
+now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+root_logdir = "tf_logs"
+logdir = "{}/run-{}".format(root_logdir, now)
+
+n_epochs = 1000
+learning_rate = 0.01
+
+X = tf.placeholder(tf.float32, shape=(None, n + 1), name="X")
+y = tf.placeholder(tf.float32, shape=(None, 1), name="y")
+theta = tf.Variable(tf.random_uniform([n+1, 1], -1.0, 1.0, seed=42), name="theta")
+y_pred = tf.matmul(X, theta, name="predictions")
+
+with tf.name_scope("loss") as scope:
+    error = y_pred - y
+    mse = tf.reduce_mean(tf.square(error), name="mse")
+
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+training_op = optimizer.minimize(mse)
+
+init = tf.global_variables_initializer()
+
+mse_summary = tf.summary.scalar('MSE', mse)
+file_writer = tf.summary.FileWriter(logdir, tf.get_default_graph())
+
+n_epochs = 10
+batch_size = 100
+n_bathches = int(np.ceil(m / batch_size))
+
+with tf.Session() as sess:
+    sess.run(init)
+
+    for epoch in range(n_epochs):
+        for batch_index in range(n_bathches):
+            X_batch, y_batch = fetch_batch(epoch, batch_index, batch_size)
+            if batch_index % 10 == 0:
+                summary_str = mse_summary.eval(feed_dict={X:X_batch, y:y_batch})
+                step = epoch * n_bathches + batch_index
+                file_writer.add_summary(summary_str, step)
+            sess.run(training_op, feed_dict={X:X_batch, y:y_batch})
+
+    best_theta = theta.eval()
+
+file_writer.flush()
+file_writer.close()
+print("Best theta:")
+print(best_theta)
+
+print(error.op.name)
+
+print(mse.op.name)
+
+reset_graph()
+
+a1 = tf.Variable(0, name="a")
+a2 = tf.Variable(0, name="a")
+
+with tf.name_scope("param"):
+    a3 = tf.Variable(0, name="a")
+
+with tf.name_scope("param"):
+    a4 = tf.Variable(0, name="a")
+
+for node in (a1, a2, a3, a4):
+    print(node.op.name)
+
+#==============================Modularity=========================================
+
+##=============================ugly flat code=====================================
+
+reset_graph()
+
+n_features = 3
+X = tf.placeholder(tf.float32, shape=(None, n_features), name="X")
+
+w1 = tf.Variable(tf.random_normal((n_features, 1)), name="weights1")
+w2 = tf.Variable(tf.random_normal((n_features, 1)), name="weights2")
+b1 = tf.Variable(0.0, name="bias1")
+b2 = tf.Variable(0.0, name="bias2")
+
+z1 = tf.add(tf.matmul(X, w1), b1, name="z1")
+z2 = tf.add(tf.matmul(X, w2), b2, name="z2")
+
+relu1 = tf.maximum(z1, 0, name="relu1")
+relu2 = tf.maximum(z2, 0, name="relu2")
+
+output = tf.add(relu1, relu2, name="output")
+
+##==========================build relus using functions===========================
+
+reset_graph()
+
+def relu(X):
+    w_shape = (int(X.get_shape()[1]), 1)
+    w = tf.Variable(tf.random_normal(w_shape), name="weights")
+    b = tf.Variable(0.0, name="bias")
+    z = tf.add(tf.matmul(X, w), b, name="z")
+    return tf.maximum(z, 0., name="relu")
+
+n_features = 3
+X = tf.placeholder(tf.float32, shape=(None, n_features), name="X")
+relus = [relu(X) for i in range(5)]
+output = tf.add_n(relus, name="output") 
+
+file_writer = tf.summary.FileWriter("logs/relu1", tf.get_default_graph())
+
+##==========================using namescopes======================================
+
+reset_graph()
+
+def relu(X):
+    with tf.name_scope("relu"):
+        w_shape = (int(X.get_shape()[1]), 1)
+        w = tf.Variable(tf.random_normal(w_shape), name="weights")
+        b = tf.Variable(0.0, name="bias")
+        z = tf.add(tf.matmul(X, w), b, name="z")
+        return tf.maximum(z, 0., name="max")
+
+n_features = 3
+X = tf.placeholder(tf.float32, shape=(None, n_features), name="X")
+relus = [relu(X) for i in range(5)]
+output = tf.add_n(relus, name="output") 
+
+file_writer = tf.summary.FileWriter("logs/relu2", tf.get_default_graph())
+file_writer.close()
+
+
+#==========================Sharing Variables======================================
+
+reset_graph()
+
+def relu(X):
+    threshold = tf.get_variable("threshold", shape=(), initializer=tf.constant_initializer(0.0))
+    w_shape = (int(X.get_shape()[1]), 1)
+    w = tf.Variable(tf.random_normal(w_shape), name="weights")
+    b = tf.Variable(0.0, name="bias")
+    z = tf.add(tf.matmul(X, w), b, name="z")
+    return tf.maximum(z, threshold, name="max")
+
+X = tf.placeholder(tf.float32, shape=(None, n_features), name="X")
+relus = []
+for relu_index in range(5):
+    with tf.variable_scope("relu", reuse=(relu_index >= 1)) as scope:
+        relus.append(relu(X))
+output = tf.add_n(relus, name="output")
+
+file_writer = tf.summary.FileWriter("logs/relu9", tf.get_default_graph())
+file_writer.close()
+
+#======================Logistic Regression With Mini-Batch Gradient Descent using Tensorflow==============
+
+from sklearn.datasets import make_moons
+
+m = 1000
+X_moons, y_moons = make_moons(m, noise=0.1, random_state=42)
+
+plt.plot(X_moons[y_moons == 1, 0], X_moons[y_moons == 1, 1], 'go', label="Positive")
+plt.plot(X_moons[y_moons == 0, 0], X_moons[y_moons == 0, 1], 'r^', label="Negative")
+plt.legend()
+plt.show()
+
+X_moons_with_bias = np.c_[np.ones((m, 1)), X_moons]
+
+X_moons_with_bias[:5]
+
+y_moons_column_vector = y_moons.reshape(-1,1)
+
+test_ratio = 0.2
+test_size = int(m * test_ratio)
+X_train = X_moons_with_bias[:-test_size]
+X_test = X_moons_with_bias[-test_size:]
+y_train = y_moons_column_vector[:-test_size]
+y_test = y_moons_column_vector[-test_size:]
+
+def random_batch(X_train, y_train, batch_size):
+    rnd_indices = np.random.randint(0, len(X_train), batch_size)
+    X_batch = X_train[rnd_indices]
+    y_batch = y_batch[rnd_indices]
+    return X_batch, y_batch
+
+X_batch, y_batch = random_batch(X_train, y_train, 5)
+X_batch
+
+y_batch
+
+reset_graph()
+
+n_inputs = 2
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+y = tf.placeholder(tf.float32, shape=(None, 1), name="y")
+theta = tf.Variable(tf.random_uniform([n_inputs + 1, 1], -1.0, 1.0, seed=42), name="theta")
+logits = tf.matmul(X, theta, name="logits")
+y_proba = 1 / (1 + tf.exp(logits))
+
+y_proba = tf.sigmoid(logits)
+
+epsilon = 1e-7
+loss = - tf.reduce_mean(y * tf.log(y_proba + epsilon) + (1-y) * tf.log(1 - y_proba + epsilon))
+
+loss = tf.losses.log_loss(y, y_proba)
+
+learning_rate = 0.01
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+training_op = optimizer.minimize(loss)
+
+init = tf.global_variables_initializer()
+
+n_epochs = 1000
+batch_size = 50
+n_bathches = int(np.ceil(m / batch_size))
+
+with tf.Session() as sess:
+    sess.run(init)
+
+    for epoch in range(n_epochs):
+        for batch_index in range(n_bathches):
+            X_batch, y_batch = random_batch(X_train, y_train, batch_size)
+            sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
+        loss_val = loss.eval({X: X_test, y:y_test})
+        if epoch % 100 == 0:
+            print("Epoch:", epoch, "\tLoss:", loss_val)
+
+    y_proba_val = y_proba.eval(feed_dict={X: X_test, y:y_test})
+
+y_proba_val[:5]
+
+y_pred = (y_proba_val >= 0.5)
+y_pred[:5]
+
+from sklearn.metrics import precision_score, recall_score
+
+precision_score(y_test, y_pred)
+
+recall_score(y_test, y_pred)
+
+y_pred_idx = y_pred.reshape(-1) # a 1D array rather than a column vector
+plt.plot(X_test[y_pred_idx, 1], X_test[y_pred_idx, 2], 'go', label="Positive")
+plt.plot(X_test[~y_pred_idx, 1], X_test[~y_pred_idx, 2], 'r^', label="Negative")
+plt.legend()
+plt.show()
+
+X_train_enhanced = np.c_[X_train,
+                         np.square(X_train[:, 1]),
+                         np.square(X_train[:, 2]),
+                         X_train[:, 1] ** 3,
+                         X_train[:, 2] ** 3]
+
+X_test_enhanced = np.c_[X_test,
+                        np.square(X_test[:, 1]),
+                        np.square(X_test[:, 2]),
+                        X_test[:, 1] ** 3,
+                        X_test[:, 2] ** 3]
+
+X_train_enhanced[:5]
+
+reset_graph()
+
+def logistic_regression(X, y, initializer=None, seed=42, learning_rate=0.01):
+    n_inputs_including_bias = int(X.get_shape()[1])
+    with tf.name_scope("logistic_regression"):
+        with tf.name_scope("model"):
+            if initializer is None:
+                initializer = tf.random_uniform([n_inputs_including_bias, 1], -1.0, 1.0, seed=seed)
+            theta = tf.Variable(initializer, name="theta")
+            logits = tf.matmul(X, theta, name="logits")
+            y_proba = tf.sigmoid(logits)
+        with tf.name_scope("train"):
+            loss = tf.losses.log_loss(y, y_proba, scope="loss")
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+            training_op = optimizer.minimize(loss)
+            loss_summary = tf.summary.scalar("log_loss", loss)
+        with tf.name_scope("init"):
+            init = tf.global_variables_initializer()
+        with tf.name_scope("save"):
+            saver = tf.train.Saver()
+    return y_proba, loss, training_op, loss_summary, init, saver
+
+from datetime import datetime
+
+def log_dir(prefix=""):
+    now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    root_logdir = "tf_logs"
+    if prefix:
+        prefix += "-"
+    name = prefix + "run-" + now
+    return "{}/{}".format(root_logdir, name)
+
+
+
+
