@@ -632,6 +632,7 @@ file_writer.close()
 
 #======================Logistic Regression With Mini-Batch Gradient Descent using Tensorflow==============
 
+##=====================Get and Peek Dataset===============================================================
 from sklearn.datasets import make_moons
 
 m = 1000
@@ -642,11 +643,15 @@ plt.plot(X_moons[y_moons == 0, 0], X_moons[y_moons == 0, 1], 'r^', label="Negati
 plt.legend()
 plt.show()
 
+##=============================Add Bias========================================================
 X_moons_with_bias = np.c_[np.ones((m, 1)), X_moons]
 
 X_moons_with_bias[:5]
 
 y_moons_column_vector = y_moons.reshape(-1,1)
+
+
+##==============================Split Dataset==================================================
 
 test_ratio = 0.2
 test_size = int(m * test_ratio)
@@ -655,10 +660,12 @@ X_test = X_moons_with_bias[-test_size:]
 y_train = y_moons_column_vector[:-test_size]
 y_test = y_moons_column_vector[-test_size:]
 
+##===============================Batch Generator=============================================
+
 def random_batch(X_train, y_train, batch_size):
     rnd_indices = np.random.randint(0, len(X_train), batch_size)
     X_batch = X_train[rnd_indices]
-    y_batch = y_batch[rnd_indices]
+    y_batch = y_train[rnd_indices]
     return X_batch, y_batch
 
 X_batch, y_batch = random_batch(X_train, y_train, 5)
@@ -666,19 +673,23 @@ X_batch
 
 y_batch
 
+##===============================Build Model====================================================
+
 reset_graph()
 
 n_inputs = 2
 
-X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+X = tf.placeholder(tf.float32, shape=(None, n_inputs + 1), name="X")
 y = tf.placeholder(tf.float32, shape=(None, 1), name="y")
 theta = tf.Variable(tf.random_uniform([n_inputs + 1, 1], -1.0, 1.0, seed=42), name="theta")
 logits = tf.matmul(X, theta, name="logits")
 y_proba = 1 / (1 + tf.exp(logits))
 
+###============================Or Use tensorflow implmented sigmoid==========================
 y_proba = tf.sigmoid(logits)
 
 epsilon = 1e-7
+####======LR using Logloss=====================================================================
 loss = - tf.reduce_mean(y * tf.log(y_proba + epsilon) + (1-y) * tf.log(1 - y_proba + epsilon))
 
 loss = tf.losses.log_loss(y, y_proba)
@@ -704,12 +715,14 @@ with tf.Session() as sess:
         if epoch % 100 == 0:
             print("Epoch:", epoch, "\tLoss:", loss_val)
 
-    y_proba_val = y_proba.eval(feed_dict={X: X_test, y:y_test})
+    y_proba_val = y_proba.eval(feed_dict={X: X_test, y:y_test})#notice how it is used
 
 y_proba_val[:5]
 
 y_pred = (y_proba_val >= 0.5)
 y_pred[:5]
+
+###===================Evaluate Model======================================================
 
 from sklearn.metrics import precision_score, recall_score
 
@@ -722,6 +735,8 @@ plt.plot(X_test[y_pred_idx, 1], X_test[y_pred_idx, 2], 'go', label="Positive")
 plt.plot(X_test[~y_pred_idx, 1], X_test[~y_pred_idx, 2], 'r^', label="Negative")
 plt.legend()
 plt.show()
+
+##============================Add Features==========================================
 
 X_train_enhanced = np.c_[X_train,
                          np.square(X_train[:, 1]),
@@ -738,10 +753,10 @@ X_test_enhanced = np.c_[X_test,
 X_train_enhanced[:5]
 
 reset_graph()
-
+##==============================build model in function==================================
 def logistic_regression(X, y, initializer=None, seed=42, learning_rate=0.01):
     n_inputs_including_bias = int(X.get_shape()[1])
-    with tf.name_scope("logistic_regression"):
+    with tf.name_scope("logistic_regression"):# using namescope to clearify code and tensorboard
         with tf.name_scope("model"):
             if initializer is None:
                 initializer = tf.random_uniform([n_inputs_including_bias, 1], -1.0, 1.0, seed=seed)
@@ -758,6 +773,7 @@ def logistic_regression(X, y, initializer=None, seed=42, learning_rate=0.01):
         with tf.name_scope("save"):
             saver = tf.train.Saver()
     return y_proba, loss, training_op, loss_summary, init, saver
+    #output necessary model object
 
 from datetime import datetime
 
@@ -767,8 +783,130 @@ def log_dir(prefix=""):
     if prefix:
         prefix += "-"
     name = prefix + "run-" + now
-    return "{}/{}".format(root_logdir, name)
+    return "{}/{}/".format(root_logdir, name)
 
+##=================training models============================================
+
+n_inputs = 2 + 4
+logdir = log_dir("logreg")
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs + 1), name="X")
+y = tf.placeholder(tf.float32, shape=(None, 1), name="y")
+
+y_proba, loss, training_op, loss_summary, init, saver = logistic_regression(X, y)
+
+file_writer = tf.summary.FileWriter(logdir, tf.get_default_graph())
+
+
+n_epochs = 10001
+batch_size = 50
+n_bathches = int(np.ceil(m / batch_size))
+
+checkpoint_path = "./tmp/my_logreg_model.ckpt"
+checkpoint_epoch_path = checkpoint_path + ".epoch"
+final_model_path = "./my_logreg_model"
+
+with tf.Session() as sess:
+    if os.path.isfile(checkpoint_epoch_path):
+        with open(checkpoint_epoch_path, "rb") as f:
+            start_epoch = int(f.read())
+        print("Training was interrupted. Coninuing at epoch", start_epoch)
+        saver.restore(sess, checkpoint_path)
+    else:
+        start_epoch = 0
+        sess.run(init)
+
+    for epoch in range(n_epochs):
+        for batch_index in range(n_bathches):
+            X_batch, y_batch = random_batch(X_train_enhanced, y_train, batch_size)
+            sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
+        loss_val, summary_str = sess.run([loss, loss_summary], feed_dict={X: X_test_enhanced, y: y_test})
+        file_writer.add_summary(summary_str, epoch)
+        if epoch % 500 == 0:
+            print("Epoch:", epoch, "\tLoss:", loss_val)
+            saver.save(sess, checkpoint_path)
+            with open(checkpoint_epoch_path, "wb") as f:
+                f.write(b"%d" % (epoch + 1))
+
+    saver.save(sess, final_model_path)
+    y_proba_val = y_proba.eval(feed_dict={X: X_test_enhanced, y:y_test})
+    os.remove(checkpoint_epoch_path)
+
+
+y_pred = (y_proba_val >= 0.5)
+precision_score(y_test, y_pred)
+recall_score(y_test, y_pred)
+
+y_pred_idx = y_pred.reshape(-1) # a 1D array rather than a column vector
+plt.plot(X_test[y_pred_idx, 1], X_test[y_pred_idx, 2], 'go', label="Positive")
+plt.plot(X_test[~y_pred_idx, 1], X_test[~y_pred_idx, 2], 'r^', label="Negative")
+plt.legend()
+plt.show()
+
+
+##========================Random Search HyperParmas================================
+
+
+from scipy.stats import reciprocal
+
+n_search_iterations = 10
+
+for search_iteration in range(n_search_iterations):
+    batch_size = np.random.randint(1, 100)
+    learning_rate = reciprocal(0.0001, 0.1).rvs(random_state=search_iteration)
+
+    from scipy.stats import reciprocal
+
+n_search_iterations = 10
+
+for search_iteration in range(n_search_iterations):
+    batch_size = np.random.randint(1, 100)
+    learning_rate = reciprocal(0.0001, 0.1).rvs(random_state=search_iteration)
+
+    n_inputs = 2 + 4
+    logdir = log_dir("logreg")
+    
+    print("Iteration", search_iteration)
+    print("  logdir:", logdir)
+    print("  batch size:", batch_size)
+    print("  learning_rate:", learning_rate)
+    print("  training: ", end="")
+
+    reset_graph()
+
+    X = tf.placeholder(tf.float32, shape=(None, n_inputs + 1), name="X")
+    y = tf.placeholder(tf.float32, shape=(None, 1), name="y")
+
+    y_proba, loss, training_op, loss_summary, init, saver = logistic_regression(
+        X, y, learning_rate=learning_rate)
+
+    file_writer = tf.summary.FileWriter(logdir, tf.get_default_graph())
+
+    n_epochs = 10001
+    n_batches = int(np.ceil(m / batch_size))
+
+    final_model_path = "./my_logreg_model_%d" % search_iteration
+
+    with tf.Session() as sess:
+        sess.run(init)
+
+        for epoch in range(n_epochs):
+            for batch_index in range(n_batches):
+                X_batch, y_batch = random_batch(X_train_enhanced, y_train, batch_size)
+                sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
+            loss_val, summary_str = sess.run([loss, loss_summary], feed_dict={X: X_test_enhanced, y: y_test})
+            file_writer.add_summary(summary_str, epoch)
+            if epoch % 500 == 0:
+                print(".", end="")
+
+        saver.save(sess, final_model_path)
+
+        print()
+        y_proba_val = y_proba.eval(feed_dict={X: X_test_enhanced, y: y_test})
+        y_pred = (y_proba_val >= 0.5)
+        
+        print("  precision:", precision_score(y_test, y_pred))
+        print("  recall:", recall_score(y_test, y_pred))
 
 
 
