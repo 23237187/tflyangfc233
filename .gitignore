@@ -1,3 +1,4 @@
 ./.vscode/settings.json
 ./model
 ./tmp
+./tf_logs
