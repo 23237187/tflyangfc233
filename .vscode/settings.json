@@ -5,8 +5,11 @@
         "pandas",
         "tensorflow",
         "sklearn",
-        "scipy.stats"
+        "scipy.stats",
+        "sklearn.datasets",
+        "sklearn.linear_model"
     ],
     "python.jediEnabled": false,
-    "python.linting.enabled": false
+    "python.linting.enabled": false,
+    "workbench.colorTheme": "Atom One Dark"
 }
