@@ -174,6 +174,40 @@ X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
 
 hidden1 = tf.layers.dense(X, n_hidden1, activation=tf.nn.elu, name="hidden1")
 
+###=====================SELU=========================================================
+
+def selu(z,
+        scale=1.0507009873554804934193349852946,
+        alpha=1.6732632423543772848170429916717):
+    return scale * elu(z, alpha)
+
+plt.plot(z, selu(z), "b-", linewidth=2)
+plt.plot([-5, 5], [0, 0], 'k-')
+plt.plot([-5, 5], [-1.758, -1.758], 'k--')
+plt.plot([0, 0], [-2.2, 3.2], 'k-')
+plt.grid(True)
+plt.title(r"SELU activation function", fontsize=14)
+plt.axis([-5, 5, -2.2, 3.2])
+
+save_fig("selu_plot")
+plt.show()
+
+np.random.seed(42)
+Z = np.random.normal(size=(500, 100))
+for layer in range(100):
+    W = np.random.normal(size=(100, 100), scale=np.sqrt(1 / 100))
+    Z = selu(np.dot(Z, W))
+    means = np.mean(Z, axis=1)
+    stds = np.std(Z, axis=1)
+    if layer % 10 == 0:
+        print("Layer {}: {:.2f} < mean < {:.2f}, {:.2f} < std deviation < {:.2f}".format(
+            layer, means.min(), means.max(), stds.min(), stds.max()))
+
+def selu(z,
+         scale=1.0507009873554804934193349852946,
+         alpha=1.6732632423543772848170429916717):
+    return scale * tf.where(z >= 0.0, z, alpha * tf.nn.elu(z))
+
 
 
 
