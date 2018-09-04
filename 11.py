@@ -145,13 +145,35 @@ batch_size = 50
 with tf.Session() as sess:
     init.run()
     for epoch in range(n_epochs):
-        i = 0
         for X_batch, y_batch in shuffle_batch(X_train, y_train, batch_size):
             sess.run(training_op, feed_dict={X: X_train, y: y_train})
-            print ("Epoch:", epoch, "Batch:", i)
-            i = i + 1
         if epoch % 5 == 0:
             acc_batch = accuracy.eval(feed_dict={X: X_train, y: y_train})
             acc_valid = accuracy.eval(feed_dict={X: X_valid, y: y_valid})
             print(epoch, "Batch accuracy:", acc_batch, "Validation accuracy:", acc_valid)
     save_path = saver.save(sess, "./my_model_final.ckpt")
+
+###=========================ELU====================================================
+def elu(z, alpha=1):
+    return np.where(z<0, alpha * (np.exp(z)-1), z)
+
+plt.plot(z, elu(z), "b-", linewidth=2)
+plt.plot([-5, 5], [0, 0], 'k-')
+plt.plot([-5, 5], [-1, -1], 'k--')
+plt.plot([0, 0], [-2.2, 3.2], 'k-')
+plt.grid(True)
+plt.title(r"ELU activation function ($\alpha=1$)", fontsize=14)
+plt.axis([-5, 5, -2.2, 3.2])
+
+save_fig("elu_plot")
+plt.show()
+
+reset_graph()
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+
+hidden1 = tf.layers.dense(X, n_hidden1, activation=tf.nn.elu, name="hidden1")
+
+
+
+
