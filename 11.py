@@ -209,5 +209,228 @@ def selu(z,
     return scale * tf.where(z >= 0.0, z, alpha * tf.nn.elu(z))
 
 
+###================SELU for MNIST====================
+reset_graph()
 
+n_inputs = 28 * 28
+n_hidden1 = 300
+n_hidden2 = 100
+n_outputs = 10
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+y = tf.placeholder(tf.int32, shape=(None), name="y")
+
+with tf.name_scope("dnn"):
+    hidden1 = tf.layers.dense(X, n_hidden1, activation=tf.nn.selu, name="hidden1")
+    hidden2 = tf.layers.dense(hidden1, n_hidden2, activation=tf.nn.selu, name="hidden2")
+    logits = tf.layers.dense(hidden2, n_outputs, name="output")
+
+with tf.name_scope("loss"):
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits)
+    loss = tf.reduce_mean(xentropy, name="loss")
+
+learning_rate = 0.01
+
+with tf.name_scope("train"):
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    training_op = optimizer.minimize(loss)
+
+with tf.name_scope("eval"):
+    correct = tf.nn.in_top_k(logits, y, 1)
+    accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+
+init = tf.global_variables_initializer()
+saver = tf.train.Saver()
+n_epochs = 40
+batch_size = 50
+
+means = X_train.mean(axis=0, keepdims=True)
+stds = X_train.std(axis=0, keepdims=True) + 1e-10
+X_val_scaled = (X_valid - means) / stds
+
+with tf.Session() as sess:
+    init.run()
+    for epoch in range(n_epochs):
+        for X_batch, y_batch in shuffle_batch(X_train, y_train, batch_size):
+            X_batch_scaled = (X_batch - means) / stds
+            sess.run(training_op, feed_dict={X: X_batch_scaled, y:y_batch})
+        if epoch % 5 == 0:
+            acc_batch = accuracy.eval(feed_dict={X: X_batch_scaled, y:y_batch})
+            acc_valid = accuracy.eval(feed_dict={X: X_val_scaled, y:y_valid})
+            print(epoch, "Batch accuracy:", acc_batch, "Validation accuracy:", acc_valid)
+    
+    save_path = saver.save(sess, "./my_model_final_selu.ckpt")
+
+#===========================Batch Normalization=============================================
+
+reset_graph()
+
+import tensorflow as tf
+
+n_inputs = 28 * 28
+n_hidden1 = 300
+n_hidden2 = 100
+n_outputs = 10
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+
+training = tf.placeholder_with_default(False, shape=(), name="training")
+
+hidden1 = tf.layers.dense(X, n_hidden1, name="hidden1")
+bn1 = tf.layers.batch_normalization(hidden1, training=training, momentum=0.9)
+bn1_act = tf.nn.elu(bn1)
+
+hidden2 = tf.layers.dense(bn1_act, n_hidden2, name="hidden2")
+bn2 = tf.layers.batch_normalization(hidden2, training=training, momentum=0.9)
+bn2_act = tf.nn.elu(bn2)
+
+logits_beforn_bn = tf.layers.dense(bn2_act, n_inputs, name="outputs")
+logits = tf.layers.batch_normalization(logits_beforn_bn, training=training, momentum=0.9)
+
+#============================
+reset_graph()
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+
+training = tf.placeholder_with_default(False, shape=(), name="training")
+
+from functools import partial
+
+my_batch_norm_layer = partial(tf.layers.batch_normalization,
+                                training=training, momentum=0.9)
+
+hidden1 = tf.layers.dense(X, n_hidden1, name="hidden1")
+bn1 = my_batch_norm_layer(hidden1)
+bn1_act = tf.nn.elu(bn1)
+
+hidden2 = tf.layers.dense(bn1_act, n_hidden2, name="hidden2")
+bn2 = my_batch_norm_layer(hidden2)
+bn2_act = tf.nn.elu(bn2)
+
+logits_beforn_bn = tf.layers.dense(bn2_act, n_output, name="output")
+logits = my_batch_norm_layer(logits_beforn_bn)
+
+###==================For MNIST BN Added===========================================
+
+reset_graph()
+
+batch_norm_momentum = 0.9
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+y = tf.placeholder(tf.int32, shape=(None), name="y")
+training = tf.placeholder_with_default(False, shape=(), name="training")
+
+with tf.name_scope("dnn"):
+    he_init = tf.variance_scaling_initializer()
+
+    my_batch_norm_layer = partial(
+        tf.layers.batch_normalization,
+        training=training,
+        momentum=batch_norm_momentum
+    )
+
+    my_dense_layer = partial(
+        tf.layers.dense,
+        kernel_initializer=he_init
+    )
+
+    hidden1 = my_dense_layer(X, n_hidden1, name="hidden1")
+    bn1 = tf.nn.elu(my_batch_norm_layer(hidden1))
+
+    hidden2 = my_dense_layer(bn1, n_hidden2, name="hidden2")
+    bn2 = tf.nn.elu(my_batch_norm_layer(hidden2))
+
+    logits_beforn_bn = my_dense_layer(bn2, n_output, name="output")
+    logits = my_batch_norm_layer(logits_beforn_bn)
+
+
+with tf.name_scope("loss"):
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits)
+    loss = tf.reduce_mean(xentropy, name="loss")
+
+with tf.name_scope("train"):
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    training_op = optimizer.minimize(loss)
+
+with tf.name_scope("eval"):
+    correct = tf.nn.in_top_k(logits, y, 1)
+    accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+
+init = tf.global_variables_initializer()
+saver = tf.train.Saver()
+
+n_epochs = 20
+batch_size = 200
+
+extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+
+with tf.Session() as sess:
+    init.run()
+    for epoch in range(n_epochs):
+        for X_batch, y_batch in shuffle_batch(X_train, y_train, batch_size):
+            sess.run([training_op, extra_update_ops]
+                    , feed_dict={X:X_batch, y:y_batch})
+        accuracy_val = accuracy.eval(feed_dict={X:X_valid, y:y_valid})
+        print(epoch, "Validation accuracy:", accuracy_val)
+
+    save_path = saver.save(sess, "./my_model_final.ckpt")
+
+
+[v.name for v in tf.trainable_variables()]
+[v.name for v in tf.global_variables()]
+
+##=====================Gradient Clipping============================================
+reset_graph()
+
+n_inputs = 28 * 28
+n_hidden1 = 300
+n_hidden2 = 50
+n_hidden3 = 50
+n_hidden4 = 50 
+n_hidden5 = 50
+n_outputs = 10
+
+X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+y = tf.placeholder(tf.int32, shape=(None), name="y")
+
+with tf.name_scope("dnn"):
+    hidden1 = tf.layers.dense(X, n_hidden1, activation=tf.nn.relu, name="hidden1")
+    hidden2 = tf.layers.dense(hidden1, n_hidden2, activation=tf.nn.relu, name="hidden2")
+    hidden3 = tf.layers.dense(hidden2, n_hidden3, activation=tf.nn.relu, name="hidden3")
+    hidden4 = tf.layers.dense(hidden3, n_hidden4, activation=tf.nn.relu, name="hidden4")
+    hidden5 = tf.layers.dense(hidden4, n_hidden5, activation=tf.nn.relu, name="hidden5")
+    logits = tf.layers.dense(hidden5, n_outputs, name="output")
+
+with tf.name_scope("loss"):
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits)
+    loss = tf.reduce_mean(xentropy, name="loss")
+
+learning_rate = 0.01
+
+threshold = 1.0
+
+optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+grads_and_vars = optimizer.compute_gradients(loss)
+capped_vars = [(tf.clip_by_value(grad, -threshold, threshold), var)
+                for grad, var in grads_and_vars]
+training_op = optimizer.apply_gradients(capped_vars)
+
+with tf.name_scope("eval"):
+    correct = tf.nn.in_top_k(logits, y , 1)
+    accuracy = tf.reduce_mean(tf.cast(correct, tf.float32), name="accuracy")
+
+init = tf.global_variables_initializer()
+saver = tf.train.Saver()
+
+n_epochs = 20
+batch_size = 200
+
+with tf.Session() as sess:
+    init.run()
+    for epoch in range(n_epochs):
+        for X_batch, y_batch in shuffle_batch(X_train,y_train,batch_size):
+            sess.run(training_op, feed_dict={X:X_batch, y:y_batch})
+        accuracy_val = accuracy.eval(feed_dict={X: X_valid, y:y_valid})
+        print(epoch, "Validation accuracy:", accuracy_val)
+    
+    save_path = saver.save(sess, "./my_model_final.ckpt")
 
